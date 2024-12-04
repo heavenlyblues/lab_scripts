@@ -1,5 +1,5 @@
 # Ignore folders
-
+__init__.py
 /certs
 /helpers
 /venv

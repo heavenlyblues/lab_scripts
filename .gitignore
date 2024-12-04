@@ -1,5 +1,15 @@
 # Ignore folders
-__init__.py
 /certs
 /helpers
+
+# Ignore virtual environments
 /venv
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+__init__.py
+
+# Ignore other environment and editor-specific files
+.DS_Store
+.vscode/

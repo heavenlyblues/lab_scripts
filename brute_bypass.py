@@ -4,7 +4,6 @@ import random
 import time
 import sys
 import urllib3
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # Disable warnings if no CA cert used (NOT RECOMMENDED outside Portswigger environment)

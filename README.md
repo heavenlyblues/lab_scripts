@@ -1,6 +1,6 @@
-# Brute Force Bypass with Rate Limiting and Alternating Bypass
+# Variety of Brute Force Attacks
 
-This Python script demonstrates techniques to bypass rate limiting during brute-force attacks and perform username enumeration and password guessing on vulnerable login forms. It includes tools to spoof IPs, randomize headers, and rotate proxies.
+These Python scripts demonstrate techniques to bypass rate limiting during brute-force attacks and perform username enumeration and password guessing on vulnerable login forms. I added some others now for 2FA logic errors and vulnerabilities in the stay-logged-in cookie by bf-ing the MD5 hash. THese scripts are a bit random as I changed the structure and made them better as I went along. Use them for learning in portswigger labs if you like and let me know what I can do to improve on these. Some of the other feature I played around with here are tools to spoof IPs (forwarded-by), randomize headers, and rotate proxies.
 
 ---
 

